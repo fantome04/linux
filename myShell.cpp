@@ -5,18 +5,63 @@
 #include <vector>
 #include <cstring>
 
+namespace Color {
+    enum Code {
+        FG_RED      = 31,
+        FG_GREEN    = 32,
+        FG_BLUE     = 34,
+        FG_DEFAULT  = 39,
+        BG_RED      = 41,
+        BG_GREEN    = 42,
+        BG_BLUE     = 44,
+        BG_DEFAULT  = 49
+    };
+    class Modifier {
+        Code code;
+    public:
+        Modifier(Code pCode) : code(pCode) {}
+        friend std::ostream&
+        operator<<(std::ostream& os, const Modifier& mod) {
+            return os << "\033[" << mod.code << "m";
+        }
+    };
+}
+
+using namespace Color;
+
 int main(){
 	char buf[1000];
 	char cwd[256];
 	char* gdir;
 	char* dir;
 	char* to;
-	bool in = false;
+	char hostname[1024];
+
+	if(getlogin() == NULL){
+		std::cerr << "login";
+                exit(errno);
+	}
+	std::string username = getlogin();
+
+       	if(gethostname(hostname, sizeof(hostname)) < 0){
+		std::cerr << "host";
+		exit(errno);
+	}
+	
+	Color::Modifier green(Color::FG_GREEN);
+	Color::Modifier blue(Color::FG_BLUE);
+    	Color::Modifier def(Color::FG_DEFAULT);
+	
 	while(true){
-    		if (getcwd(cwd, sizeof(cwd)) == NULL)
-      			perror("getcwd() error");
-    		else	
-			std::cout << "myShell:" << cwd << "$ ";
+    		if (getcwd(cwd, sizeof(cwd)) == NULL){
+			std::cerr << "getcwd";
+			exit(errno);
+
+		}
+    		else{	
+			std::cout << green << username << "@" << hostname << def << ":" << blue << "~" << cwd << def << "$ ";
+		}
+	
 		
 		std::string args;
 		std::getline(std::cin, args);
