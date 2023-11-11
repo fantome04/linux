@@ -4,6 +4,9 @@
 #include <unistd.h>
 #include <vector>
 #include <cstring>
+#include <algorithm>
+#include <fcntl.h>
+#include <cstdlib>
 
 namespace Color {
     enum Code {
@@ -51,20 +54,22 @@ int main(){
 	Color::Modifier green(Color::FG_GREEN);
 	Color::Modifier blue(Color::FG_BLUE);
     	Color::Modifier def(Color::FG_DEFAULT);
-	
-	while(true){
-    		if (getcwd(cwd, sizeof(cwd)) == NULL){
-			std::cerr << "getcwd";
-			exit(errno);
 
-		}
-    		else{	
-			std::cout << green << username << "@" << hostname << def << ":" << blue << "~" << cwd << def << "$ ";
-		}
+	std::string args;
+
+	while(true){
+		if(args.empty()){
+    			if (getcwd(cwd, sizeof(cwd)) == NULL){
+				std::cerr << "getcwd";
+				exit(errno);
+
+			}
+    			else{	
+				std::cout << green << username << "@" << hostname << def << ":" << blue << "~" << cwd << def << "$ ";
+			}
 	
-		
-		std::string args;
-		std::getline(std::cin, args);
+			std::getline(std::cin, args);
+		}
 
 		if(args == "exit"){
 			std::cout << "exit" << std::endl;
@@ -74,15 +79,30 @@ int main(){
 		std::vector<char*> coms;
 		char* str = strtok(const_cast<char*>(args.c_str()), " ");
 
-		while(str != nullptr){
-			coms.push_back(str);
-			str = strtok(nullptr, " ");
-		}
+		std::string b = " ";
+        	while (str != nullptr)
+        	{
+            		coms.push_back(str);
+            		if(!(strcmp(coms.back(), "&&")))
+            		{
+                		coms.pop_back();
+                		b = "&&";
+                		break;
+            		}
+            		else if(!(strcmp(coms.back(), "||")))
+            		{
+                		coms.pop_back();
+                		b = "||";
+                		break;
+            		}
 
-		coms.push_back(nullptr);
+            		str = strtok(nullptr, " ");
+
+        	}	
 		
-		
-                if(!strcmp(coms[0], "cd")){
+	 	coms.push_back(nullptr);	
+
+		if(!strcmp(coms[0], "cd")){
                         gdir = getcwd(buf, sizeof(buf));
 			dir = strcat(gdir, "/");
 			to = strcat(dir, coms[1]);
@@ -98,11 +118,61 @@ int main(){
 			exit(errno);
 		}
 
+		std::vector<char*> temp = coms;
+
+		temp.pop_back();
+
+		auto arrow = std::find_if(temp.begin(), temp.end(), [](const char* str){return strcmp(str, ">") == 0;});
+
+		auto double_arrow = std::find_if(temp.begin(), temp.end(), [](const char* str){return strcmp(str, ">>") == 0;});
+
 		if(pid == 0){
-			if(execvp(coms[0], coms.data()) < 0){
-				std::cout << coms[0] << ": command not found" << std::endl;
+			int fd = 0;
+
+			if(temp.size() > 2 && (arrow != temp.end() || double_arrow != temp.end())){
+				if(arrow != temp.end()){
+					fd = open(*(arrow + 1), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+                    			temp.erase(arrow, temp.end());
+				}		
+				else{
+					fd = open(*(double_arrow + 1), O_WRONLY | O_CREAT | O_APPEND, 0666);
+                    			temp.erase(double_arrow, temp.end());
+				}
+			}
+
+			if (fd == -1){
+                		std::cerr << "open" << std::endl;
+                		exit(errno);
+            		}
+
+            		int copied = dup(1);
+
+            		if (copied == -1){
+                		std::cerr << "dup" << std::endl;
+                		exit(errno);
+            		}
+
+            		if (dup2(fd, 1) == -1){
+                		std::cerr << "dup2" << std::endl;
+                		exit(errno);
+            		}
+            		close(fd);
+			
+
+            		temp.push_back(nullptr);
+
+			if(execvp(temp[0], temp.data()) < 0){
+				std::cout << temp[0] << ": command not found" << std::endl;
 				exit(EXIT_FAILURE);
 			}
+			
+			if (dup2(copied, 1) == -1)
+            		{
+               	 		std::cerr << "dup2" << std::endl;
+                		exit(errno);
+            		}
+            		close(copied);
+		
 		}
 		
 		else{
@@ -115,9 +185,33 @@ int main(){
 
 			if(WIFEXITED(status)){
 				std::cout << "exit code: " << WEXITSTATUS(status) << std::endl;
+			
+
+				if(WEXITSTATUS(status) != 0)
+                		{	
+                    			if(!strcmp(b.c_str(), "&&"))
+                        			args.clear();
+                		}
+                		else
+               	 		{
+                    			if(!strcmp(b.c_str(), "||"))
+                        			args.clear();
+                		}
 			}
 		}
-	
-	
+		if(!strcmp(b.c_str(), " ")){
+            		args.clear();
+		}
+        	else
+        	{
+            		auto a = args.find_first_of(b);
+            		std::string tmp = "";
+            		for (int i = a + 3; i < args.size(); ++i) {
+                		tmp += args[i];
+            		}
+            		args = tmp;
+        	}
 	}
+
+	return 0;
 }
